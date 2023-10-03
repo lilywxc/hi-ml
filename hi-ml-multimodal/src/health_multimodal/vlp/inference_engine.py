@@ -102,11 +102,8 @@ class ImageTextInferenceEngine:
         assert projected_text_embeddings.shape[0] == 1
         assert projected_text_embeddings.dim() == 2
         patch_wise_similarity = projected_patch_embeddings.view(-1, feature_size) @ projected_text_embeddings.t()
-        patch_wise_similarity = patch_wise_similarity.reshape(n_patches_h, n_patches_w).cpu().numpy()
-        smoothed_similarity_map = torch.tensor(
-            ndimage.gaussian_filter(patch_wise_similarity, sigma=(sigma, sigma), order=0)
-        )
-        return smoothed_similarity_map
+        similarity_map = patch_wise_similarity.reshape(n_patches_h, n_patches_w)
+        return similarity_map
 
     @staticmethod
     def convert_similarity_to_image_size(
@@ -147,7 +144,9 @@ class ImageTextInferenceEngine:
             )
             margin_w, margin_h = (width - target_size[0]), (height - target_size[1])
             margins_for_pad = (floor(margin_w / 2), ceil(margin_w / 2), floor(margin_h / 2), ceil(margin_h / 2))
-            similarity_map = F.pad(similarity_map[0, 0], margins_for_pad, value=float("NaN"))
+
+            # Pad with zeros for differentiability instead of NaNs
+            similarity_map = F.pad(similarity_map[0, 0], margins_for_pad, value=0.0)
         else:
             similarity_map = F.interpolate(
                 reshaped_similarity,
@@ -155,7 +154,7 @@ class ImageTextInferenceEngine:
                 mode=interpolation,
                 align_corners=align_corners,
             )[0, 0]
-        return similarity_map.numpy()
+        return similarity_map
 
     def to(self, device: torch.device) -> None:
         """Move models to the specified device."""
